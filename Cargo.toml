@@ -1,0 +1,17 @@
+[package]
+name = "update-server"
+version = "0.1.0"
+authors = ["jam1garner <8260240+jam1garner@users.noreply.github.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+update-protocol = { path = "../update-protocol" }
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+semver = "0.11.0"
+color-eyre = "0.5.5"
+notify = "4.0.15"
+crossbeam = "0.7.3"
+toml = "0.5.6"

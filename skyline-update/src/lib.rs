@@ -7,16 +7,16 @@ use update_protocol::{UpdateRequest, UpdateResponse, ResponseCode};
 const PORT: u16 = 45000;
 
 #[cfg(target_os = "switch")]
-pub fn should_update(response: &UpdateResponse) -> bool {
+fn should_update(response: &UpdateResponse) -> bool {
     true
 }
 
 #[cfg(not(target_os = "switch"))]
-pub fn should_update(_: &UpdateResponse) -> bool {
+fn should_update(_: &UpdateResponse) -> bool {
     true
 }
 
-pub fn update(ip: IpAddr, response: UpdateResponse) {
+fn update(ip: IpAddr, response: UpdateResponse) {
     for file in response.required_files {
         if let Ok(mut stream) = TcpStream::connect((ip, file.download_port)) {
             let mut buf = vec![];

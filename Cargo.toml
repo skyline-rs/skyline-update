@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "update-server",
+    "skyline-update",
+    "update-protocol",
+]

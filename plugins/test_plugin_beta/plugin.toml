@@ -1,0 +1,7 @@
+version = "1.1.0"
+name = 'test_plugin'
+files = [
+    { install_location = "/atmosphere/content/01006A800016E000/exefs/test.txt", filename = "test.txt" }
+]
+skyline_version = '0.0.0'
+beta = true

@@ -19,6 +19,8 @@ pub struct PluginToml {
 
     pub name: String,
 
+    pub beta: Option<bool>,
+
     pub files: Vec<PluginFile>,
 
     #[serde(with = "version_parse")]
@@ -64,6 +66,7 @@ pub struct Plugin {
     pub plugin_version: Version,
     pub files: Vec<(InstallLocation, Vec<u8>)>,
     pub skyline_version: Version,
+    pub beta: bool,
 }
 
 fn to_file(PluginFile { install_location, filename }: PluginFile, dir: &Path) -> eyre::Result<(InstallLocation, Vec<u8>)> {
@@ -85,7 +88,7 @@ pub fn folder_to_plugin(dir: io::Result<fs::DirEntry>) -> eyre::Result<Option<Pl
 
     let plugin: PluginToml = toml::from_str(&fs::read_to_string(toml_path)?)?;
 
-    let PluginToml { version, name, files, skyline_version } =  plugin;
+    let PluginToml { version, name, files, skyline_version, beta } =  plugin;
 
     let files = files.into_iter().map(|file| to_file(file, &path)).collect::<eyre::Result<_>>()?;
 
@@ -93,7 +96,8 @@ pub fn folder_to_plugin(dir: io::Result<fs::DirEntry>) -> eyre::Result<Option<Pl
         name,
         plugin_version: version,
         files,
-        skyline_version
+        skyline_version,
+        beta: beta.unwrap_or(false)
     }))
 }
 
@@ -118,6 +122,7 @@ pub fn print_default() {
         name: "name".to_owned(),
         version: "1.0.0".parse().unwrap(),
         files: vec![],
-        skyline_version: "0.0.0".parse().unwrap()
+        skyline_version: "0.0.0".parse().unwrap(),
+        beta: Some(false)
     }).unwrap());
 }

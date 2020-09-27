@@ -25,6 +25,7 @@ struct PluginFile {
 impl From<&PluginFile> for UpdateFile {
     fn from(file: &PluginFile) -> Self {
         UpdateFile {
+            size: file.data.len(),
             download_port: file.port.clone(),
             install_location: file.install.clone()
         }
@@ -36,6 +37,7 @@ struct Plugin {
     pub plugin_version: Version,
     pub files: Vec<PluginFile>,
     pub skyline_version: Version,
+    pub beta: bool,
 }
 
 const PORT_NUM: u16 = 45000;
@@ -51,7 +53,7 @@ fn setup_plugin_ports() -> eyre::Result<Vec<Plugin>> {
         plugins.into_iter()
             .map(|plugin|{
                 let hosted_plugins::Plugin {
-                    name, plugin_version, files, skyline_version
+                    name, plugin_version, files, skyline_version, beta
                 } = plugin;
 
                 let files = files.into_iter()
@@ -73,7 +75,8 @@ fn setup_plugin_ports() -> eyre::Result<Vec<Plugin>> {
                     name,
                     plugin_version,
                     skyline_version,
-                    files
+                    files,
+                    beta
                 })
             })
             .collect()
@@ -125,7 +128,10 @@ fn main() -> eyre::Result<()> {
                 let mut packet = String::new();
                 let _ = socket.read_line(&mut packet);
                 let response = if let Ok(request) = serde_json::from_str::<UpdateRequest>(&packet) {
-                    let plugin = plugins.iter().find(|plugin| plugin.name == request.plugin_name);
+                    let beta = request.beta.unwrap_or(false);
+                    let plugin = plugins.iter().filter(|plugin| {
+                        plugin.name == request.plugin_name && (beta || !plugin.beta)
+                    }).max_by_key(|plugin| &plugin.plugin_version);
 
                     if let Some(plugin) = plugin {
                         if let Ok(current_version) = request.plugin_version.parse::<Version>() {

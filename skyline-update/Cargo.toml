@@ -1,0 +1,10 @@
+[package]
+name = "skyline-update"
+version = "0.1.0"
+authors = ["jam1garner <8260240+jam1garner@users.noreply.github.com>"]
+edition = "2018"
+
+[dependencies]
+update-protocol = { path = "../update-protocol" }
+serde_json = "1"
+

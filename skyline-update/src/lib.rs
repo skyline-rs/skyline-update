@@ -49,37 +49,41 @@ fn update(ip: IpAddr, response: UpdateResponse) {
 }
 
 pub fn check_update(ip: IpAddr, name: &str, version: &str, allow_beta: bool) {
-    if let Ok(mut stream) = TcpStream::connect((ip, PORT)) {
-        if let Ok(packet) = serde_json::to_string(&UpdateRequest {
-            beta: Some(allow_beta),
-            plugin_name: name.to_owned(),
-            plugin_version: version.to_owned(),
-        }) {
-            let _ = stream.write_fmt(format_args!("{}\n", packet));
-            let mut string = String::new();
-            let _ = stream.read_to_string(&mut string);
+    match TcpStream::connect((ip, PORT)) {
+        Ok(mut stream) =>  {
+            if let Ok(packet) = serde_json::to_string(&UpdateRequest {
+                beta: Some(allow_beta),
+                plugin_name: name.to_owned(),
+                plugin_version: version.to_owned(),
+            }) {
+                let _ = stream.write_fmt(format_args!("{}\n", packet));
+                let mut string = String::new();
+                let _ = stream.read_to_string(&mut string);
 
-            if let Ok(response) = serde_json::from_str::<UpdateResponse>(&string) {
-                match response.code {
-                    ResponseCode::NoUpdate => return,
-                    ResponseCode::Update => {
-                        if should_update(&response) {
-                            update(ip, response);
+                if let Ok(response) = serde_json::from_str::<UpdateResponse>(&string) {
+                    match response.code {
+                        ResponseCode::NoUpdate => return,
+                        ResponseCode::Update => {
+                            if should_update(&response) {
+                                update(ip, response);
+                            }
+                        }
+                        ResponseCode::InvalidRequest => {
+                            println!("[{} updater] Failed to send a valid request to the server", name);
+                        }
+                        ResponseCode::PluginNotFound => {
+                            println!("Plugin '{}' could not be found on the update server", name);
                         }
                     }
-                    ResponseCode::InvalidRequest => {
-                        println!("[{} updater] Failed to send a valid request to the server", name);
-                    }
-                    ResponseCode::PluginNotFound => {
-                        println!("Plugin '{}' could not be found on the update server", name);
-                    }
+                } else {
+                    println!("[{} updater] Failed to parse update server response: {:?}", name, string);
                 }
-            } else {
-                println!("[{} updater] Failed to parse update server response: {:?}", name, string);
             }
         }
-    } else {
-        println!("[{} updater] Failed to connect to update server {}", name, ip);
+        Err(e) => {
+            println!("[{} updater] Failed to connect to update server {}", name, ip);
+            println!("[{} updater] {:?}", name, e);
+        }
     }
 }
 

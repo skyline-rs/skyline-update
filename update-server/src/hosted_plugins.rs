@@ -23,8 +23,8 @@ pub struct PluginToml {
 
     pub files: Vec<PluginFile>,
 
-    #[serde(with = "version_parse")]
-    pub skyline_version: Version,
+    #[serde(default, with = "version_parse_opt", skip_serializing_if = "Option::is_none")]
+    pub skyline_version: Option<Version>,
 }
 
 mod version_parse {
@@ -58,6 +58,23 @@ mod version_parse {
         where D: Deserializer<'de>
     {
         de.deserialize_string(VerVisitor)
+    }
+}
+
+mod version_parse_opt {
+    use semver::Version;
+    use serde::{Serializer, Deserializer};
+
+    pub fn serialize<S>(ver: &Option<Version>, ser: S) -> Result<S::Ok, S::Error>
+        where S: Serializer
+    {
+        ser.collect_str(ver.as_ref().unwrap())
+    }
+
+    pub fn deserialize<'de, D>(de: D) -> Result<Option<Version>, D::Error>
+        where D: Deserializer<'de>
+    {
+        Ok(super::version_parse::deserialize(de).ok())
     }
 }
 
@@ -96,7 +113,7 @@ pub fn folder_to_plugin(dir: io::Result<fs::DirEntry>) -> eyre::Result<Option<Pl
         name,
         plugin_version: version,
         files,
-        skyline_version,
+        skyline_version: skyline_version.unwrap_or("0.0.0".parse().unwrap()),
         beta: beta.unwrap_or(false)
     }))
 }
@@ -122,7 +139,7 @@ pub fn print_default() {
         name: "name".to_owned(),
         version: "1.0.0".parse().unwrap(),
         files: vec![],
-        skyline_version: "0.0.0".parse().unwrap(),
+        skyline_version: None,
         beta: Some(false)
     }).unwrap());
 }

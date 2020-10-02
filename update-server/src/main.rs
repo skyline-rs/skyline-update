@@ -60,7 +60,7 @@ fn setup_plugin_ports() -> eyre::Result<Vec<Plugin>> {
                     .map(|(install, data)|{
                         i += 1;
                         let port = PORT_NUM + i as u16;
-                        let socket = TcpListener::bind(("127.0.0.1", port))?;
+                        let socket = TcpListener::bind(("0.0.0.0", port))?;
                         socket.set_nonblocking(true)?;
                         Ok(PluginFile {
                             install,
@@ -100,7 +100,7 @@ fn main() -> eyre::Result<()> {
     watcher.watch("plugins", RecursiveMode::Recursive).unwrap();
 
     let mut plugins = setup_plugin_ports()?;
-    let main_port = TcpListener::bind(("127.0.0.1", PORT_NUM))?;
+    let main_port = TcpListener::bind(("0.0.0.0", PORT_NUM))?;
     main_port.set_nonblocking(true)?;
 
     crossbeam::scope(move |scope|{
@@ -140,6 +140,7 @@ fn main() -> eyre::Result<()> {
                                     code: ResponseCode::Update,
                                     update_plugin: true,
                                     update_skyline: false,
+                                    plugin_name: request.plugin_name.clone(),
                                     new_plugin_version: Some(plugin.plugin_version.to_string()),
                                     new_skyline_version: None,
                                     required_files: plugin.files.iter().map(|file| file.into()).collect()

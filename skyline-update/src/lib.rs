@@ -2,21 +2,60 @@ use std::path::PathBuf;
 use std::io::prelude::*;
 use std::net::{TcpStream, IpAddr};
 
-use update_protocol::{UpdateRequest, UpdateResponse, ResponseCode};
+use update_protocol::{UpdateRequest, ResponseCode};
+
+pub use update_protocol::UpdateResponse;
 
 const PORT: u16 = 45000;
 
-#[cfg(target_os = "switch")]
-fn should_update(response: &UpdateResponse) -> bool {
-    true
-}
+pub struct DefaultInstaller;
 
 #[cfg(not(target_os = "switch"))]
-fn should_update(_: &UpdateResponse) -> bool {
-    true
+impl Installer for DefaultInstaller {
+    fn should_update(&self, _: &UpdateResponse) -> bool {
+        true
+    }
+
+    fn install_file(&self, path: PathBuf, buf: Vec<u8>) -> Result<(), ()> {
+        println!("Installing {} bytes to path {}", buf.len(), path.display());
+
+        if let Ok(string) = String::from_utf8(buf) {
+            println!("As string: {:?}", string);
+        }
+
+        Ok(())
+    }
 }
 
-fn update(ip: IpAddr, response: UpdateResponse) {
+#[cfg(target_os = "switch")]
+impl Installer for DefaultInstaller {
+    fn should_update(&self, response: &UpdateResponse) -> bool {
+        skyline_web::Dialog::yes_no(format!(
+            "An update for {} has been found.\nWould you like to download it?",
+            response.plugin_name
+        ))
+    }
+
+    fn install_file(&self, path: PathBuf, buf: Vec<u8>) -> Result<(), ()> {
+        let _ = std::fs::create_dir_all(path.parent().ok_or(())?);
+        if let Err(e) = std::fs::write(path, buf) {
+            println!("[updater] Error writing file to sd: {}", e);
+            Err(())
+        } else {
+            Ok(())
+        }
+    }
+}
+
+/// An installer for use with custom_check_update
+pub trait Installer {
+    fn should_update(&self, response: &UpdateResponse) -> bool;
+    fn install_file(&self, path: PathBuf, buf: Vec<u8>) -> Result<(), ()>;
+}
+
+fn update<I>(ip: IpAddr, response: UpdateResponse, installer: &I)
+    where I: Installer,
+{
     for file in response.required_files {
         if let Ok(mut stream) = TcpStream::connect((ip, file.download_port)) {
             let mut buf = vec![];
@@ -29,26 +68,21 @@ fn update(ip: IpAddr, response: UpdateResponse) {
                 _ => continue
             };
 
-            // Don't actually install things if we're not running on switch
-            #[cfg(not(target_os = "switch"))] {
-                println!("Installing {} bytes to path {}", buf.len(), path.display());
-
-                if let Ok(string) = String::from_utf8(buf) {
-                    println!("As string: {:?}", string);
-                }
-            }
-
-            #[cfg(target_os = "switch")]
-            if let Err(e) = std::fs::write(path, buf) {
-                println!("[updater] Error writing file to sd: {}", e);
+            if installer.install_file(path, buf).is_err() {
+                return
             }
         } else {
             println!("[updater] Failed to connect to port {}", file.download_port);
+            return
         }
     }
+    println!("[updater] finished updating plugin.");
 }
 
-pub fn check_update(ip: IpAddr, name: &str, version: &str, allow_beta: bool) {
+/// Install an update with a custom installer implementation
+pub fn custom_check_update<I>(ip: IpAddr, name: &str, version: &str, allow_beta: bool, installer: &I)
+    where I: Installer,
+{
     match TcpStream::connect((ip, PORT)) {
         Ok(mut stream) =>  {
             if let Ok(packet) = serde_json::to_string(&UpdateRequest {
@@ -64,8 +98,8 @@ pub fn check_update(ip: IpAddr, name: &str, version: &str, allow_beta: bool) {
                     match response.code {
                         ResponseCode::NoUpdate => return,
                         ResponseCode::Update => {
-                            if should_update(&response) {
-                                update(ip, response);
+                            if installer.should_update(&response) {
+                                update(ip, response, installer);
                             }
                         }
                         ResponseCode::InvalidRequest => {
@@ -85,6 +119,17 @@ pub fn check_update(ip: IpAddr, name: &str, version: &str, allow_beta: bool) {
             println!("[{} updater] {:?}", name, e);
         }
     }
+}
+
+/// Install an update using the default installer
+///
+/// ## Args
+/// * ip - IP address of server
+/// * name - name of plugin to update
+/// * version - current version of plugin
+/// * allow_beta - allow beta versions to be offered
+pub fn check_update(ip: IpAddr, name: &str, version: &str, allow_beta: bool) {
+    custom_check_update(ip, name, version, allow_beta, &DefaultInstaller);
 }
 
 #[cfg(test)]

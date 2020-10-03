@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::io::prelude::*;
 use std::net::{TcpStream, IpAddr};
 
-use update_protocol::{UpdateRequest, ResponseCode};
+use update_protocol::{Request, ResponseCode};
 
 pub use update_protocol::UpdateResponse;
 
@@ -85,10 +85,11 @@ pub fn custom_check_update<I>(ip: IpAddr, name: &str, version: &str, allow_beta:
 {
     match TcpStream::connect((ip, PORT)) {
         Ok(mut stream) =>  {
-            if let Ok(packet) = serde_json::to_string(&UpdateRequest {
+            if let Ok(packet) = serde_json::to_string(&Request::Update {
                 beta: Some(allow_beta),
                 plugin_name: name.to_owned(),
                 plugin_version: version.to_owned(),
+                options: None,
             }) {
                 let _ = stream.write_fmt(format_args!("{}\n", packet));
                 let mut string = String::new();
@@ -107,6 +108,9 @@ pub fn custom_check_update<I>(ip: IpAddr, name: &str, version: &str, allow_beta:
                         }
                         ResponseCode::PluginNotFound => {
                             println!("Plugin '{}' could not be found on the update server", name);
+                        }
+                        _ => {
+                            println!("Unexpected response");
                         }
                     }
                 } else {

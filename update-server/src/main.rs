@@ -13,7 +13,7 @@ use std::io::{self, prelude::*, BufReader};
 use color_eyre::eyre;
 
 use semver::Version;
-use update_protocol::{InstallLocation, UpdateRequest, UpdateResponse, ResponseCode, UpdateFile};
+use update_protocol::{InstallLocation, Request, UpdateResponse, ResponseCode, UpdateFile};
 
 struct PluginFile {
     install: InstallLocation,
@@ -127,35 +127,36 @@ fn main() -> eyre::Result<()> {
                 let plugins = &plugins;
                 let mut packet = String::new();
                 let _ = socket.read_line(&mut packet);
-                let response = if let Ok(request) = serde_json::from_str::<UpdateRequest>(&packet) {
-                    let beta = request.beta.unwrap_or(false);
-                    let plugin = plugins.iter().filter(|plugin| {
-                        plugin.name == request.plugin_name && (beta || !plugin.beta)
-                    }).max_by_key(|plugin| &plugin.plugin_version);
+                let response = match serde_json::from_str::<Request>(&packet) {
+                    Ok(Request::Update { plugin_name, plugin_version, beta, .. }) => {
+                        let beta = beta.unwrap_or(false);
+                        let plugin = plugins.iter().filter(|plugin| {
+                            plugin.name == plugin_name && (beta || !plugin.beta)
+                        }).max_by_key(|plugin| &plugin.plugin_version);
 
-                    if let Some(plugin) = plugin {
-                        if let Ok(current_version) = request.plugin_version.parse::<Version>() {
-                            if current_version < plugin.plugin_version {
-                                UpdateResponse {
-                                    code: ResponseCode::Update,
-                                    update_plugin: true,
-                                    update_skyline: false,
-                                    plugin_name: request.plugin_name.clone(),
-                                    new_plugin_version: Some(plugin.plugin_version.to_string()),
-                                    new_skyline_version: None,
-                                    required_files: plugin.files.iter().map(|file| file.into()).collect()
+                        if let Some(plugin) = plugin {
+                            if let Ok(current_version) = plugin_version.parse::<Version>() {
+                                if current_version < plugin.plugin_version {
+                                    UpdateResponse {
+                                        code: ResponseCode::Update,
+                                        update_plugin: true,
+                                        update_skyline: false,
+                                        plugin_name,
+                                        new_plugin_version: Some(plugin.plugin_version.to_string()),
+                                        new_skyline_version: None,
+                                        required_files: plugin.files.iter().map(|file| file.into()).collect()
+                                    }
+                                } else {
+                                    UpdateResponse::no_update()
                                 }
                             } else {
-                                UpdateResponse::no_update()
+                                UpdateResponse::invalid_request()
                             }
                         } else {
-                            UpdateResponse::invalid_request()
+                            UpdateResponse::plugin_not_found()
                         }
-                    } else {
-                        UpdateResponse::plugin_not_found()
                     }
-                } else {
-                    UpdateResponse::invalid_request()
+                    _ => UpdateResponse::invalid_request()
                 };
 
                 let mut socket = socket.into_inner();

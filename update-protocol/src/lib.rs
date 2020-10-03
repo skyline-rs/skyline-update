@@ -9,6 +9,7 @@ pub struct VersionInfo {
     pub skyline_version: Option<String>,
 }
 
+#[non_exhaustive]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ResponseCode {
     NoUpdate,
@@ -63,11 +64,21 @@ pub struct UpdateFile {
     pub size: usize,
 }
 
+#[non_exhaustive]
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct UpdateRequest {
-    pub plugin_name: String,
-    pub plugin_version: String,
-    pub beta: Option<bool>,
+pub struct UpdateRequestOptions {
+
+}
+
+#[non_exhaustive]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum Request {
+    Update {
+        plugin_name: String,
+        plugin_version: String,
+        beta: Option<bool>,
+        options: Option<UpdateRequestOptions>,
+    }
 }
 
 // For allowing deserialization of unknown
@@ -78,6 +89,7 @@ where
     Ok(InstallLocation::deserialize(deserializer).unwrap_or(InstallLocation::Unknown))
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum InstallLocation {
     AbsolutePath(String),

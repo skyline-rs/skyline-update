@@ -13,6 +13,13 @@ pub struct PluginFile {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+pub struct Metadata {
+    pub name: Option<String>,
+    pub images: Option<Vec<PathBuf>>,
+    pub description: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 pub struct PluginToml {
     #[serde(with = "version_parse")]
     pub version: Version,
@@ -25,6 +32,8 @@ pub struct PluginToml {
 
     #[serde(default, with = "version_parse_opt", skip_serializing_if = "Option::is_none")]
     pub skyline_version: Option<Version>,
+
+    pub metadata: Option<Metadata>,
 }
 
 mod version_parse {

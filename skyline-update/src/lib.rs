@@ -53,7 +53,7 @@ pub trait Installer {
     fn install_file(&self, path: PathBuf, buf: Vec<u8>) -> Result<(), ()>;
 }
 
-fn update<I>(ip: IpAddr, response: UpdateResponse, installer: &I)
+fn update<I>(ip: IpAddr, response: UpdateResponse, installer: &I) -> bool
     where I: Installer,
 {
     for file in response.required_files {
@@ -61,26 +61,27 @@ fn update<I>(ip: IpAddr, response: UpdateResponse, installer: &I)
             let mut buf = vec![];
             if let Err(e) = stream.read_to_end(&mut buf) {
                 println!("[updater] Error downloading file: {}", e);
-                continue
+                return false
             }
             let path: PathBuf = match file.install_location {
                 update_protocol::InstallLocation::AbsolutePath(path) => path.into(),
-                _ => continue
+                _ => return false
             };
 
             if installer.install_file(path, buf).is_err() {
-                return
+                return false
             }
         } else {
             println!("[updater] Failed to connect to port {}", file.download_port);
-            return
+            return false
         }
     }
     println!("[updater] finished updating plugin.");
+    true
 }
 
 /// Install an update with a custom installer implementation
-pub fn custom_check_update<I>(ip: IpAddr, name: &str, version: &str, allow_beta: bool, installer: &I)
+pub fn custom_check_update<I>(ip: IpAddr, name: &str, version: &str, allow_beta: bool, installer: &I) -> bool
     where I: Installer,
 {
     match TcpStream::connect((ip, PORT)) {
@@ -97,30 +98,46 @@ pub fn custom_check_update<I>(ip: IpAddr, name: &str, version: &str, allow_beta:
 
                 if let Ok(response) = serde_json::from_str::<UpdateResponse>(&string) {
                     match response.code {
-                        ResponseCode::NoUpdate => return,
+                        ResponseCode::NoUpdate => return false,
                         ResponseCode::Update => {
                             if installer.should_update(&response) {
-                                update(ip, response, installer);
+                                let success = update(ip, response, installer);
+
+                                if !success {
+                                    println!("[{} updater] Failed to install update, files may be left in a broken state.", name);
+                                }
+
+                                success
+                            } else {
+                                false
                             }
                         }
                         ResponseCode::InvalidRequest => {
                             println!("[{} updater] Failed to send a valid request to the server", name);
+                            false
                         }
                         ResponseCode::PluginNotFound => {
                             println!("Plugin '{}' could not be found on the update server", name);
+                            false
                         }
                         _ => {
                             println!("Unexpected response");
+                            false
                         }
                     }
                 } else {
                     println!("[{} updater] Failed to parse update server response: {:?}", name, string);
+                    false
                 }
+            } else {
+                println!("[{} updater] Failed to encode packet", name);
+                false
             }
         }
         Err(e) => {
             println!("[{} updater] Failed to connect to update server {}", name, ip);
             println!("[{} updater] {:?}", name, e);
+            false
         }
     }
 }
@@ -132,8 +149,8 @@ pub fn custom_check_update<I>(ip: IpAddr, name: &str, version: &str, allow_beta:
 /// * name - name of plugin to update
 /// * version - current version of plugin
 /// * allow_beta - allow beta versions to be offered
-pub fn check_update(ip: IpAddr, name: &str, version: &str, allow_beta: bool) {
-    custom_check_update(ip, name, version, allow_beta, &DefaultInstaller);
+pub fn check_update(ip: IpAddr, name: &str, version: &str, allow_beta: bool) -> bool {
+    custom_check_update(ip, name, version, allow_beta, &DefaultInstaller)
 }
 
 #[cfg(test)]

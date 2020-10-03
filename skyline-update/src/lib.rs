@@ -31,7 +31,7 @@ impl Installer for DefaultInstaller {
 impl Installer for DefaultInstaller {
     fn should_update(&self, response: &UpdateResponse) -> bool {
         skyline_web::Dialog::yes_no(format!(
-            "An update for {} has been found.\nWould you like to download it?",
+            "An update for {} has been found.\n\nWould you like to download it?",
             response.plugin_name
         ))
     }

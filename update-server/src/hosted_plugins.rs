@@ -114,7 +114,7 @@ pub fn folder_to_plugin(dir: io::Result<fs::DirEntry>) -> eyre::Result<Option<Pl
 
     let plugin: PluginToml = toml::from_str(&fs::read_to_string(toml_path)?)?;
 
-    let PluginToml { version, name, files, skyline_version, beta } =  plugin;
+    let PluginToml { version, name, files, skyline_version, beta, metadata } =  plugin;
 
     let files = files.into_iter().map(|file| to_file(file, &path)).collect::<eyre::Result<_>>()?;
 
@@ -143,12 +143,13 @@ pub fn get() -> eyre::Result<Vec<Plugin>> {
     )
 }
 
-pub fn print_default() {
+/*pub fn print_default() {
     println!("{}", toml::to_string_pretty(&PluginToml {
         name: "name".to_owned(),
         version: "1.0.0".parse().unwrap(),
         files: vec![],
         skyline_version: None,
-        beta: Some(false)
+        beta: Some(false),
+        metadata: None,
     }).unwrap());
-}
+}*/

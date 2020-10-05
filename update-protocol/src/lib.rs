@@ -56,6 +56,15 @@ impl UpdateResponse {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PluginMetadata {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub images_index: u64,
+    pub image_count: u64,
+    pub changelog_index: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UpdateFile {
     #[serde(deserialize_with = "deserialize_field_kind")]
     pub install_location: InstallLocation,
@@ -78,7 +87,11 @@ pub enum Request {
         plugin_version: String,
         beta: Option<bool>,
         options: Option<UpdateRequestOptions>,
-    }
+    },
+    Metadata {
+        plugin_name: String,
+        beta: Option<bool>,
+    },
 }
 
 // For allowing deserialization of unknown

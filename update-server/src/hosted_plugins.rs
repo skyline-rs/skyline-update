@@ -13,10 +13,11 @@ pub struct PluginFile {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct Metadata {
+pub struct TomlMetadata {
     pub name: Option<String>,
     pub images: Option<Vec<PathBuf>>,
     pub description: Option<String>,
+    pub changelog: Option<PathBuf>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -33,7 +34,7 @@ pub struct PluginToml {
     #[serde(default, with = "version_parse_opt", skip_serializing_if = "Option::is_none")]
     pub skyline_version: Option<Version>,
 
-    pub metadata: Option<Metadata>,
+    pub metadata: Option<TomlMetadata>,
 }
 
 mod version_parse {
@@ -87,12 +88,21 @@ mod version_parse_opt {
     }
 }
 
+#[derive(Default)]
+pub struct Metadata {
+    pub name: Option<String>,
+    pub images: Option<Vec<Vec<u8>>>,
+    pub description: Option<String>,
+    pub changelog: Option<String>,
+}
+
 pub struct Plugin {
     pub name: String,
     pub plugin_version: Version,
     pub files: Vec<(InstallLocation, Vec<u8>)>,
     pub skyline_version: Version,
     pub beta: bool,
+    pub metadata: Metadata,
 }
 
 fn to_file(PluginFile { install_location, filename }: PluginFile, dir: &Path) -> eyre::Result<(InstallLocation, Vec<u8>)> {
@@ -118,28 +128,38 @@ pub fn folder_to_plugin(dir: io::Result<fs::DirEntry>) -> eyre::Result<Option<Pl
 
     let files = files.into_iter().map(|file| to_file(file, &path)).collect::<eyre::Result<_>>()?;
 
+    let metadata = metadata.map(|metadata| {
+        Metadata {
+            name: metadata.name,
+            images: metadata.images.map(|x| x.iter().map(|path| fs::read(path).unwrap_or_default()).collect()),
+            description: metadata.description,
+            changelog: metadata.changelog.map(|path| fs::read_to_string(path).ok()).flatten()
+        }
+    }).unwrap_or_default();
+
     Ok(Some(Plugin {
         name,
         plugin_version: version,
         files,
         skyline_version: skyline_version.unwrap_or("0.0.0".parse().unwrap()),
-        beta: beta.unwrap_or(false)
+        beta: beta.unwrap_or(false),
+        metadata,
     }))
 }
 
 pub fn get() -> eyre::Result<Vec<Plugin>> {
     Ok(
         fs::read_dir("plugins")?
-        .filter_map(|entry| {
-            match folder_to_plugin(entry) {
-                Ok(x) => x,
-                Err(e) => {
-                    println!("{}", e);
-                    None
+            .filter_map(|entry| {
+                match folder_to_plugin(entry) {
+                    Ok(x) => x,
+                    Err(e) => {
+                        println!("{}", e);
+                        None
+                    }
                 }
-            }
-        })
-        .collect()
+            })
+            .collect()
     )
 }
 

@@ -13,7 +13,7 @@ use std::io::{prelude::*, BufReader};
 use color_eyre::eyre;
 
 use semver::Version;
-use update_protocol::{InstallLocation, Request, UpdateResponse, ResponseCode, UpdateFile};
+use update_protocol::{InstallLocation, Request, UpdateResponse, ResponseCode, UpdateFile, PluginMetadata};
 
 struct PluginFile {
     install: InstallLocation,
@@ -35,6 +35,8 @@ struct Plugin {
     pub name: String,
     pub plugin_version: Version,
     pub files: Vec<PluginFile>,
+    pub metadata_files: Vec<Arc<Vec<u8>>>,
+    pub metadata: PluginMetadata,
     pub skyline_version: Version,
     pub beta: bool,
 }
@@ -48,7 +50,7 @@ fn setup_plugin_ports() -> eyre::Result<(Vec<Plugin>, Vec<Arc<Vec<u8>>>)> {
     let plugins: Vec<Plugin> = plugins.into_iter()
         .map(|plugin|{
             let hosted_plugins::Plugin {
-                name, plugin_version, files, skyline_version, beta
+                name, plugin_version, files, skyline_version, beta, metadata
             } = plugin;
 
             let files = files.into_iter()
@@ -63,11 +65,34 @@ fn setup_plugin_ports() -> eyre::Result<(Vec<Plugin>, Vec<Arc<Vec<u8>>>)> {
                 })
                 .collect::<eyre::Result<_>>()?;
 
+            let hosted_plugins::Metadata {
+                name: meta_name, images, changelog, description
+            } = metadata;
+
+            let image_count = images.as_ref().map(|x| x.len() as _).unwrap_or(0);
+
+            let metadata = PluginMetadata {
+                name: meta_name,
+                description,
+                images_index: i,
+                image_count,
+                changelog_index: i + image_count,
+            };
+
+            let metadata_files = images.into_iter()
+                .map(|images| images.into_iter())
+                .flatten()
+                .map(|image| Arc::new(image))
+                .chain(changelog.into_iter().map(|x| Arc::new(x.into_bytes())))
+                .collect();
+
             Ok(Plugin {
                 name,
                 plugin_version,
                 skyline_version,
                 files,
+                metadata_files,
+                metadata,
                 beta
             })
         })
@@ -129,14 +154,22 @@ fn main() -> eyre::Result<()> {
                 let plugins = &plugins;
                 let mut packet = String::new();
                 let _ = socket.read_line(&mut packet);
-                let response = match serde_json::from_str::<Request>(&packet) {
+                macro_rules! respond {
+                    ($expr:expr) => {{
+                        let response = $expr;
+                        let mut socket = socket.into_inner();
+                        let _ = socket.write(format!("{}\n", serde_json::to_string(&response).unwrap()).as_bytes());
+                        let _ = socket.shutdown(std::net::Shutdown::Both);
+                    }}
+                }
+                match serde_json::from_str::<Request>(&packet) {
                     Ok(Request::Update { plugin_name, plugin_version, beta, .. }) => {
                         let beta = beta.unwrap_or(false);
                         let plugin = plugins.iter().filter(|plugin| {
                             plugin.name == plugin_name && (beta || !plugin.beta)
                         }).max_by_key(|plugin| &plugin.plugin_version);
 
-                        if let Some(plugin) = plugin {
+                        let response = if let Some(plugin) = plugin {
                             if let Ok(current_version) = plugin_version.parse::<Version>() {
                                 if current_version < plugin.plugin_version {
                                     UpdateResponse {
@@ -156,22 +189,28 @@ fn main() -> eyre::Result<()> {
                             }
                         } else {
                             UpdateResponse::plugin_not_found()
+                        };
+
+                        respond!(response);
+                    }
+                    Ok(Request::Metadata { plugin_name, beta, .. }) => {
+                        let beta = beta.unwrap_or(false);
+                        let plugin = plugins.iter().filter(|plugin| {
+                            plugin.name == plugin_name && (beta || !plugin.beta)
+                        }).max_by_key(|plugin| &plugin.plugin_version);
+
+                        if let Some(plugin) = plugin {
+                            respond!(&plugin.metadata)
                         }
                     }
-                    _ => UpdateResponse::invalid_request()
-                };
-
-                let mut socket = socket.into_inner();
-                let _ = socket.write(format!("{}\n", serde_json::to_string(&response).unwrap()).as_bytes());
-                let _ = socket.shutdown(std::net::Shutdown::Both);
+                    _ => respond!(UpdateResponse::invalid_request()),
+                }
             }
 
             while let Ok((mut socket, _)) = download_port.accept() {
                 let mut buf = [0; 8];
                 if let Ok(_) = socket.read_exact(&mut buf) {
                     let index = u64::from_be_bytes(buf) as usize;
-                    println!("Index: {}", index);
-                    println!("Files.len(): {}", files.len());
                     if let Some(file) = files.get(index) {
                         let data = Arc::clone(&file);
                         scope.spawn(move |_| {

@@ -153,6 +153,32 @@ pub fn check_update(ip: IpAddr, name: &str, version: &str, allow_beta: bool) -> 
     custom_check_update(ip, name, version, allow_beta, &DefaultInstaller)
 }
 
+pub fn get_update_info(ip: IpAddr, name: &str, version: &str, allow_beta: bool) -> Option<UpdateResponse> {
+    match TcpStream::connect((ip, PORT)) {
+        Ok(mut stream) =>  {
+            if let Ok(packet) = serde_json::to_string(&Request::Update {
+                beta: Some(allow_beta),
+                plugin_name: name.to_owned(),
+                plugin_version: version.to_owned(),
+                options: None,
+            }) {
+                let _ = stream.write_fmt(format_args!("{}\n", packet));
+                let mut string = String::new();
+                let _ = stream.read_to_string(&mut string);
+
+                if let Ok(response) = serde_json::from_str::<UpdateResponse>(&string) {
+                    Some(response)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        }
+        Err(_) => None,
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;

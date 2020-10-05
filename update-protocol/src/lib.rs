@@ -60,7 +60,7 @@ pub struct UpdateFile {
     #[serde(deserialize_with = "deserialize_field_kind")]
     pub install_location: InstallLocation,
 
-    pub download_port: u16,
+    pub download_index: u64,
     pub size: usize,
 }
 

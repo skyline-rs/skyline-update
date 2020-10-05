@@ -57,8 +57,9 @@ fn update<I>(ip: IpAddr, response: UpdateResponse, installer: &I) -> bool
     where I: Installer,
 {
     for file in response.required_files {
-        if let Ok(mut stream) = TcpStream::connect((ip, file.download_port)) {
+        if let Ok(mut stream) = TcpStream::connect((ip, PORT + 1)) {
             let mut buf = vec![];
+            let _ = stream.write_all(&u64::to_be_bytes(file.download_index));
             if let Err(e) = stream.read_to_end(&mut buf) {
                 println!("[updater] Error downloading file: {}", e);
                 return false
@@ -72,7 +73,7 @@ fn update<I>(ip: IpAddr, response: UpdateResponse, installer: &I) -> bool
                 return false
             }
         } else {
-            println!("[updater] Failed to connect to port {}", file.download_port);
+            println!("[updater] Failed to connect to port {}", PORT + 1);
             return false
         }
     }

@@ -8,7 +8,7 @@ use std::fs;
 use std::sync::Arc;
 use std::path::Path;
 use std::net::TcpListener;
-use std::io::{self, prelude::*, BufReader};
+use std::io::{prelude::*, BufReader};
 
 use color_eyre::eyre;
 
@@ -18,15 +18,14 @@ use update_protocol::{InstallLocation, Request, UpdateResponse, ResponseCode, Up
 struct PluginFile {
     install: InstallLocation,
     data: Arc<Vec<u8>>,
-    port: u16,
-    socket: TcpListener,
+    index: u64,
 }
 
 impl From<&PluginFile> for UpdateFile {
     fn from(file: &PluginFile) -> Self {
         UpdateFile {
             size: file.data.len(),
-            download_port: file.port.clone(),
+            download_index: file.index.clone(),
             install_location: file.install.clone()
         }
     }
@@ -41,46 +40,45 @@ struct Plugin {
 }
 
 const PORT_NUM: u16 = 45000;
-const MAX_PORTS: u16 = 999;
 
-fn setup_plugin_ports() -> eyre::Result<Vec<Plugin>> {
+fn setup_plugin_ports() -> eyre::Result<(Vec<Plugin>, Vec<Arc<Vec<u8>>>)> {
     let plugins = hosted_plugins::get()?;
 
-    if plugins.len() > MAX_PORTS as usize {
-        Err(eyre::eyre!("Too many files. Increase max ports."))
-    } else {
-        let mut i = 0usize;
-        plugins.into_iter()
-            .map(|plugin|{
-                let hosted_plugins::Plugin {
-                    name, plugin_version, files, skyline_version, beta
-                } = plugin;
+    let mut i = 0;
+    let plugins: Vec<Plugin> = plugins.into_iter()
+        .map(|plugin|{
+            let hosted_plugins::Plugin {
+                name, plugin_version, files, skyline_version, beta
+            } = plugin;
 
-                let files = files.into_iter()
-                    .map(|(install, data)|{
-                        i += 1;
-                        let port = PORT_NUM + i as u16;
-                        let socket = TcpListener::bind(("0.0.0.0", port))?;
-                        socket.set_nonblocking(true)?;
-                        Ok(PluginFile {
-                            install,
-                            port,
-                            socket,
-                            data: Arc::new(data),
-                        })
+            let files = files.into_iter()
+                .map(|(install, data)|{
+                    let index = i;
+                    i += 1;
+                    Ok(PluginFile {
+                        install,
+                        index,
+                        data: Arc::new(data),
                     })
-                    .collect::<eyre::Result<_>>()?;
-
-                Ok(Plugin {
-                    name,
-                    plugin_version,
-                    skyline_version,
-                    files,
-                    beta
                 })
+                .collect::<eyre::Result<_>>()?;
+
+            Ok(Plugin {
+                name,
+                plugin_version,
+                skyline_version,
+                files,
+                beta
             })
-            .collect()
-    }
+        })
+        .collect::<eyre::Result<_>>()?;
+
+    let files = plugins.iter()
+        .map(|plugin| plugin.files.iter().map(|file| Arc::clone(&file.data)))
+        .flatten()
+        .collect();
+
+    Ok((plugins, files))
 }
 
 fn main() -> eyre::Result<()> {
@@ -99,9 +97,11 @@ fn main() -> eyre::Result<()> {
 
     watcher.watch("plugins", RecursiveMode::Recursive).unwrap();
 
-    let mut plugins = setup_plugin_ports()?;
+    let (mut plugins, mut files) = setup_plugin_ports()?;
     let main_port = TcpListener::bind(("0.0.0.0", PORT_NUM))?;
+    let download_port = TcpListener::bind(("0.0.0.0", PORT_NUM + 1))?;
     main_port.set_nonblocking(true)?;
+    download_port.set_nonblocking(true)?;
 
     crossbeam::scope(move |scope|{
         loop {
@@ -117,7 +117,9 @@ fn main() -> eyre::Result<()> {
                     // clear plugins (close sockets)
                     plugins = Vec::with_capacity(0);
                     // setup new plugins
-                    plugins = setup_plugin_ports()?;
+                    let (x, y) = setup_plugin_ports()?;
+                    plugins = x;
+                    files = y;
                 },
                 Err(_) => {}
             }
@@ -164,20 +166,21 @@ fn main() -> eyre::Result<()> {
                 let _ = socket.shutdown(std::net::Shutdown::Both);
             }
 
-            for plugin in &plugins {
-                for file in &plugin.files {
-                    match file.socket.accept() {
-                        Ok((mut socket, _)) => {
-                            let data = Arc::clone(&file.data);
-                            scope.spawn(move |_| {
-                                socket.write_all(&data[..])
-                            });
-                        }
-                        Err(e) if e.kind() == io::ErrorKind::WouldBlock => (),
-                        Err(e) => {
-                            println!("Error occurred in accept: {}", e);
-                        }
+            while let Ok((mut socket, _)) = download_port.accept() {
+                let mut buf = [0; 8];
+                if let Ok(_) = socket.read_exact(&mut buf) {
+                    let index = u64::from_be_bytes(buf) as usize;
+                    println!("Index: {}", index);
+                    println!("Files.len(): {}", files.len());
+                    if let Some(file) = files.get(index) {
+                        let data = Arc::clone(&file);
+                        scope.spawn(move |_| {
+                            let _ = socket.write_all(&data);
+                        });
                     }
+                } else {
+                    println!("Failed to read index");
+                    let _ = socket.shutdown(std::net::Shutdown::Both);
                 }
             }
 

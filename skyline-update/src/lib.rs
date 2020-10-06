@@ -53,10 +53,10 @@ pub trait Installer {
     fn install_file(&self, path: PathBuf, buf: Vec<u8>) -> Result<(), ()>;
 }
 
-fn update<I>(ip: IpAddr, response: UpdateResponse, installer: &I) -> bool
+fn update<I>(ip: IpAddr, response: &UpdateResponse, installer: &I) -> bool
     where I: Installer,
 {
-    for file in response.required_files {
+    for file in &response.required_files {
         if let Ok(mut stream) = TcpStream::connect((ip, PORT + 1)) {
             let mut buf = vec![];
             let _ = stream.write_all(&u64::to_be_bytes(file.download_index));
@@ -64,7 +64,7 @@ fn update<I>(ip: IpAddr, response: UpdateResponse, installer: &I) -> bool
                 println!("[updater] Error downloading file: {}", e);
                 return false
             }
-            let path: PathBuf = match file.install_location {
+            let path: PathBuf = match &file.install_location {
                 update_protocol::InstallLocation::AbsolutePath(path) => path.into(),
                 _ => return false
             };
@@ -102,7 +102,7 @@ pub fn custom_check_update<I>(ip: IpAddr, name: &str, version: &str, allow_beta:
                         ResponseCode::NoUpdate => return false,
                         ResponseCode::Update => {
                             if installer.should_update(&response) {
-                                let success = update(ip, response, installer);
+                                let success = update(ip, &response, installer);
 
                                 if !success {
                                     println!("[{} updater] Failed to install update, files may be left in a broken state.", name);
@@ -180,12 +180,17 @@ pub fn get_update_info(ip: IpAddr, name: &str, version: &str, allow_beta: bool) 
     }
 }
 
+pub fn install_update(ip: IpAddr, info: &UpdateResponse) -> bool {
+    update(ip, info, &DefaultInstaller)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
 
     #[test]
     fn test_install() {
+        println!("{}", serde_json::to_string(&Request::Update { plugin_name: "test_name".into(), plugin_version: "1.0.0".into(), beta: None, options: None }).unwrap());
         check_update("127.0.0.1".parse().unwrap(), "test_plugin", "0.9.0", true);
     }
 }

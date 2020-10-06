@@ -30,7 +30,7 @@ pub struct UpdateResponse {
     pub update_plugin: bool,
     pub update_skyline: bool,
     pub plugin_name: String,
-    pub new_plugin_version: Option<String>,
+    pub new_plugin_version: String,
     pub new_skyline_version: Option<String>,
     pub required_files: Vec<UpdateFile>,
 }

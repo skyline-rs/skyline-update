@@ -177,7 +177,7 @@ fn main() -> eyre::Result<()> {
                                         update_plugin: true,
                                         update_skyline: false,
                                         plugin_name,
-                                        new_plugin_version: Some(plugin.plugin_version.to_string()),
+                                        new_plugin_version: plugin.plugin_version.to_string(),
                                         new_skyline_version: None,
                                         required_files: plugin.files.iter().map(|file| file.into()).collect()
                                     }

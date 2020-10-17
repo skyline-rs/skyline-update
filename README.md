@@ -33,8 +33,8 @@ A `plugin.toml` looks like so:
 version = "1.0.0"
 name = "my_mod_name"
 files = [
-    { install_location = "/atmosphere/content/01006A800016E000/exefs/my_mod_name.nro", filename = "my_mod_name.nro" },
-    { install_location = "/my_mod_file_dependency.txt", filename = "my_mod_file_dependency.txt" }
+    { install_location = "sd:/atmosphere/contents/01006A800016E000/exefs/my_mod_name.nro", filename = "my_mod_name.nro" },
+    { install_location = "sd:/my_mod_file_dependency.txt", filename = "my_mod_file_dependency.txt" }
 ]
 ```
 
